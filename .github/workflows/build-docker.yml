@@ -1,0 +1,84 @@
+name: Create and publish multi-arch Docker images
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NGINX: ticketz-oss/nginx-alpine
+  IMAGE_NODE: ticketz-oss/node-alpine
+
+jobs:
+  build-and-push-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta nginx
+        id: metanginx
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NGINX }}
+          labels: |
+            org.opencontainers.image.title=ticketz-nginx-alpine
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Docker meta Node
+        id: metanode
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NODE }}
+          labels: |
+            org.opencontainers.image.title=ticketz-node-alpine
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Build and push backend Docker image
+        id: nginx
+        uses: docker/build-push-action@v2
+        with:
+          context: ./nginx-alpine
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metanginx.outputs.tags }}
+          labels: ${{ steps.metanginx.outputs.labels }}
+
+      - name: Build and push frontend Docker image
+        id: node
+        uses: docker/build-push-action@v2
+        with:
+          context: ./node-alpine
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metanode.outputs.tags }}
+          labels: ${{ steps.metanode.outputs.labels }}
