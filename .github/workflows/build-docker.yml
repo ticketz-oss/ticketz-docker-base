@@ -63,7 +63,7 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
-      - name: Build and push backend Docker image
+      - name: Build and push Nginx Docker image
         id: nginx
         uses: docker/build-push-action@v2
         with:
@@ -73,7 +73,7 @@ jobs:
           tags: ${{ steps.metanginx.outputs.tags }}
           labels: ${{ steps.metanginx.outputs.labels }}
 
-      - name: Build and push frontend Docker image
+      - name: Build and push Nod Docker image
         id: node
         uses: docker/build-push-action@v2
         with:
