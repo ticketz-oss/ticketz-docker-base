@@ -7,4 +7,4 @@ RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/
     && wget -O /usr/local/bin/dockerize.tar.gz https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-$(dpkg --print-architecture)-${DOCKERIZE_VERSION}.tar.gz \
     && tar -C /usr/local/bin -xzvf /usr/local/bin/dockerize.tar.gz \
     && rm /usr/local/bin/dockerize.tar.gz \
-    && apk add --no-cache postgresql-client
+    && apt-get update && apt-get install -y postgresql-client-15
