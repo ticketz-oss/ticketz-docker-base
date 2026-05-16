@@ -7,7 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NGINX: ticketz-oss/nginx-alpine
-  IMAGE_NODE: ticketz-oss/node
+  IMAGE_NODE: ticketz-oss/ticketz-node-22
 
 jobs:
   build-and-push-images:
@@ -55,7 +55,7 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NODE }}
           labels: |
-            org.opencontainers.image.title=ticketz-node
+            org.opencontainers.image.title=ticketz-node-22
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
