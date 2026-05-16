@@ -1,4 +1,4 @@
-FROM node:22
+FROM node:24
 
 # Install dumb-init and dockerize
 ENV DOCKERIZE_VERSION v0.7.0
