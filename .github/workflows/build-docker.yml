@@ -27,6 +27,7 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -104,15 +105,16 @@ jobs:
           push-to-registry: true
 
       - name: Run Trivy vulnerability scanner
+        id: trivy
         if: github.event_name != 'pull_request' && steps.build.outputs.digest != ''
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           format: sarif
           output: trivy-results-${{ matrix.name }}.sarif
 
       - name: Upload Trivy scan results to GitHub Security tab
-        if: github.event_name != 'pull_request' && always()
+        if: github.event_name != 'pull_request' && steps.trivy.outcome == 'success'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results-${{ matrix.name }}.sarif
