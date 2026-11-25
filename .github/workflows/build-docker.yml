@@ -4,20 +4,50 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
-  IMAGE_NGINX: ticketz-oss/nginx-alpine
-  IMAGE_NGINX_SLIM: ticketz-oss/nginx-alpine-slim
-  IMAGE_NODE: ticketz-oss/ticketz-node-24
-  IMAGE_NODE_26: ticketz-oss/ticketz-node-26
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   build-and-push-images:
+    name: Build and push ${{ matrix.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
       attestations: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nginx-alpine
+            context: ./nginx-alpine
+            image: ticketz-oss/nginx-alpine
+            title: ticketz-nginx-alpine
+          - name: nginx-alpine-slim
+            context: ./nginx-alpine-slim
+            image: ticketz-oss/nginx-alpine-slim
+            title: ticketz-nginx-alpine-slim
+          - name: ticketz-node-24
+            context: ./node
+            image: ticketz-oss/ticketz-node-24
+            title: ticketz-node-24
+          - name: ticketz-node-26
+            context: ./node-26
+            image: ticketz-oss/ticketz-node-26
+            title: ticketz-node-26
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,20 +59,21 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker meta nginx
-        id: metanginx
-        uses: docker/metadata-action@v3
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NGINX }}
+            ${{ env.REGISTRY }}/${{ matrix.image }}
           labels: |
-            org.opencontainers.image.title=ticketz-nginx-alpine
+            org.opencontainers.image.title=${{ matrix.title }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -50,87 +81,49 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
-      - name: Docker meta Node
-        id: metanode
-        uses: docker/metadata-action@v3
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NODE }}
-          labels: |
-            org.opencontainers.image.title=ticketz-node-24
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
+          context: ${{ matrix.context }}
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ env.PLATFORMS }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: true
+          sbom: true
 
-      - name: Docker meta nginx alpine slim
-        id: metanginxslim
-        uses: docker/metadata-action@v3
+      - name: Generate artifact attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v1
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NGINX_SLIM }}
-          labels: |
-            org.opencontainers.image.title=ticketz-nginx-alpine-slim
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
+          subject-name: ${{ env.REGISTRY }}/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
-      - name: Docker meta Node 26
-        id: metanode26
-        uses: docker/metadata-action@v3
+      - name: Run Trivy vulnerability scanner
+        if: github.event_name != 'pull_request' && steps.build.outputs.digest != ''
+        uses: aquasecurity/trivy-action@0.29.0
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NODE_26 }}
-          labels: |
-            org.opencontainers.image.title=ticketz-node-26
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-results-${{ matrix.name }}.sarif
 
-      - name: Build and push Nginx Docker image
-        id: nginx
-        uses: docker/build-push-action@v2
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: github.event_name != 'pull_request' && always()
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          context: ./nginx-alpine
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.metanginx.outputs.tags }}
-          labels: ${{ steps.metanginx.outputs.labels }}
+          sarif_file: trivy-results-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
 
-      - name: Build and push Nod Docker image
-        id: node
-        uses: docker/build-push-action@v2
-        with:
-          context: ./node
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.metanode.outputs.tags }}
-          labels: ${{ steps.metanode.outputs.labels }}
-
-      - name: Build and push Nginx Alpine Slim Docker image
-        id: nginx-slim
-        uses: docker/build-push-action@v2
-        with:
-          context: ./nginx-alpine-slim
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.metanginxslim.outputs.tags }}
-          labels: ${{ steps.metanginxslim.outputs.labels }}
-
-      - name: Build and push Node 26 Docker image
-        id: node26
-        uses: docker/build-push-action@v2
-        with:
-          context: ./node-26
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.metanode26.outputs.tags }}
-          labels: ${{ steps.metanode26.outputs.labels }}
+      - name: Add job summary
+        if: always()
+        run: |
+          echo "## ${{ matrix.title }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Context:** ${{ matrix.context }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Pushed:** ${{ github.event_name != 'pull_request' }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ steps.build.outputs.digest }}" ]; then
+            echo "- **Digest:** ${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
