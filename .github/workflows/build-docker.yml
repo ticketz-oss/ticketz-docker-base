@@ -7,7 +7,9 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NGINX: ticketz-oss/nginx-alpine
+  IMAGE_NGINX_SLIM: ticketz-oss/nginx-alpine-slim
   IMAGE_NODE: ticketz-oss/ticketz-node-24
+  IMAGE_NODE_26: ticketz-oss/ticketz-node-26
 
 jobs:
   build-and-push-images:
@@ -63,6 +65,36 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
+      - name: Docker meta nginx alpine slim
+        id: metanginxslim
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NGINX_SLIM }}
+          labels: |
+            org.opencontainers.image.title=ticketz-nginx-alpine-slim
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Docker meta Node 26
+        id: metanode26
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NODE_26 }}
+          labels: |
+            org.opencontainers.image.title=ticketz-node-26
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
       - name: Build and push Nginx Docker image
         id: nginx
         uses: docker/build-push-action@v2
@@ -82,3 +114,23 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.metanode.outputs.tags }}
           labels: ${{ steps.metanode.outputs.labels }}
+
+      - name: Build and push Nginx Alpine Slim Docker image
+        id: nginx-slim
+        uses: docker/build-push-action@v2
+        with:
+          context: ./nginx-alpine-slim
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metanginxslim.outputs.tags }}
+          labels: ${{ steps.metanginxslim.outputs.labels }}
+
+      - name: Build and push Node 26 Docker image
+        id: node26
+        uses: docker/build-push-action@v2
+        with:
+          context: ./node-26
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metanode26.outputs.tags }}
+          labels: ${{ steps.metanode26.outputs.labels }}
